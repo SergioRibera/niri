@@ -126,6 +126,7 @@ use crate::animation::Clock;
 use crate::backend::tty::SurfaceDmabufFeedback;
 use crate::backend::{Backend, Headless, RenderResult, Tty, Winit};
 use crate::cursor::{CursorManager, CursorTextureCache, RenderCursor, XCursor};
+use crate::cursor_scale::{CursorScaleParams, CursorScaleTracker};
 #[cfg(feature = "dbus")]
 use crate::dbus::freedesktop_locale1::Locale1ToNiri;
 #[cfg(feature = "dbus")]
@@ -391,6 +392,7 @@ pub struct Niri {
     /// afterwards without going through the config again.
     pub configured_keymap: Option<Arc<str>>,
 
+    pub cursor_scale_tracker: CursorScaleTracker,
     pub cursor_manager: CursorManager,
     pub cursor_texture_cache: CursorTextureCache,
     pub cursor_shape_manager_state: CursorShapeManagerState,
@@ -2679,6 +2681,8 @@ impl Niri {
         seat.add_pointer();
 
         let cursor_shape_manager_state = CursorShapeManagerState::new::<State>(&display_handle);
+        let cursor_scale_tracker =
+            CursorScaleTracker::new(animation_clock.clone(), CursorScaleParams::default());
         let cursor_manager =
             CursorManager::new(&config_.cursor.xcursor_theme, config_.cursor.xcursor_size);
 
@@ -2868,6 +2872,7 @@ impl Niri {
             cursor_manager,
             cursor_texture_cache: Default::default(),
             cursor_shape_manager_state,
+            cursor_scale_tracker,
             dnd_icon: None,
             pointer_contents: PointContents::default(),
             pointer_visibility: PointerVisibility::Visible,
@@ -4036,13 +4041,16 @@ impl Niri {
                 icon,
                 scale,
                 cursor,
+                pixel_size,
             } => {
                 let (idx, frame) = cursor.frame(self.start_time.elapsed().as_millis() as u32);
                 let hotspot = XCursor::hotspot(frame).to_logical(scale);
                 let pointer_pos =
                     (pointer_pos - hotspot.to_f64()).to_physical_precise_round(output_scale);
 
-                let texture = self.cursor_texture_cache.get(icon, scale, &cursor, idx);
+                let texture = self
+                    .cursor_texture_cache
+                    .get(icon, pixel_size, scale, &cursor, idx);
                 match MemoryRenderBufferRenderElement::from_buffer(
                     renderer,
                     pointer_pos,
@@ -4368,6 +4376,14 @@ impl Niri {
         self.exit_confirm_dialog.advance_animations();
         self.screenshot_ui.advance_animations();
         self.window_mru_ui.advance_animations();
+
+        if self
+            .cursor_scale_tracker
+            .advance_animations(&mut self.cursor_manager)
+        {
+            // FIXME: can be more granular.
+            self.queue_redraw_all();
+        }
 
         for state in self.output_state.values_mut() {
             if let Some(transition) = &mut state.screen_transition {
