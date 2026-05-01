@@ -126,7 +126,7 @@ use crate::animation::Clock;
 use crate::backend::tty::SurfaceDmabufFeedback;
 use crate::backend::{Backend, Headless, RenderResult, Tty, Winit};
 use crate::cursor::{CursorManager, CursorTextureCache, RenderCursor, XCursor};
-use crate::cursor_scale::CursorScaleTracker;
+use crate::cursor_scale::{CursorScaleParams, CursorScaleTracker};
 #[cfg(feature = "dbus")]
 use crate::dbus::freedesktop_locale1::Locale1ToNiri;
 #[cfg(feature = "dbus")]
@@ -1753,9 +1753,9 @@ impl State {
             self.niri
                 .cursor_manager
                 .reload(&config.cursor.xcursor_theme, config.cursor.xcursor_size);
-            self.niri
-                .cursor_scale_tracker
-                .reload(config.cursor.shake.clone());
+            self.niri.cursor_scale_tracker.reload(
+                CursorScaleParams::from_config(config.cursor.shake.clone(), &config.animations),
+            );
             self.niri.cursor_texture_cache.clear();
         }
 
@@ -2684,8 +2684,10 @@ impl Niri {
         seat.add_pointer();
 
         let cursor_shape_manager_state = CursorShapeManagerState::new::<State>(&display_handle);
-        let cursor_scale_tracker =
-            CursorScaleTracker::new(animation_clock.clone(), config_.cursor.shake.clone());
+        let cursor_scale_tracker = CursorScaleTracker::new(
+            animation_clock.clone(),
+            CursorScaleParams::from_config(config_.cursor.shake.clone(), &config_.animations),
+        );
         let cursor_manager =
             CursorManager::new(&config_.cursor.xcursor_theme, config_.cursor.xcursor_size);
 
