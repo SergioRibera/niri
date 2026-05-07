@@ -16,6 +16,9 @@ use xcursor::parser::{parse_xcursor, Image};
 use xcursor::CursorTheme;
 
 const MAX_CURSOR_PIXELS: i32 = 256;
+const CURSOR_SIZES: &[i32] = &[
+    12, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72, 96, 128, 192, 256,
+];
 
 /// Some default looking `left_ptr` icon.
 static FALLBACK_CURSOR_DATA: &[u8] = include_bytes!("../resources/cursor.rgba");
@@ -63,7 +66,7 @@ impl CursorManager {
     }
 
     /// Get the current rendering cursor.
-    pub fn get_render_cursor(&self, scale: i32) -> RenderCursor {
+    pub fn get_render_cursor(&self, scale: i32, fractional_scale: f64) -> RenderCursor {
         match self.current_cursor.clone() {
             CursorImageStatus::Hidden => RenderCursor::Hidden,
             CursorImageStatus::Surface(surface) => {
@@ -79,12 +82,19 @@ impl CursorManager {
 
                 RenderCursor::Surface { hotspot, surface }
             }
-            CursorImageStatus::Named(icon) => self.get_render_cursor_named(icon, scale),
+            CursorImageStatus::Named(icon) => {
+                self.get_render_cursor_named(icon, scale, fractional_scale)
+            }
         }
     }
 
-    fn get_render_cursor_named(&self, icon: CursorIcon, scale: i32) -> RenderCursor {
-        let pixel_size = self.effective_cursor_pixel_size(scale);
+    fn get_render_cursor_named(
+        &self,
+        icon: CursorIcon,
+        scale: i32,
+        fractional_scale: f64,
+    ) -> RenderCursor {
+        let pixel_size = self.effective_cursor_pixel_size(scale, fractional_scale);
         self.get_cursor_with_name(icon, scale)
             .map(|cursor| RenderCursor::Named {
                 icon,
@@ -124,19 +134,61 @@ impl CursorManager {
         self.dynamic_size_multiplier.get()
     }
 
-    /// Compute the effective pixel size for the cursor given an output integer `scale`.
-    pub fn effective_cursor_pixel_size(&self, scale: i32) -> i32 {
+    /// Compute the effective pixel size for the cursor considering fractional scaling.
+    pub fn effective_cursor_pixel_size(&self, scale: i32, fractional_scale: f64) -> i32 {
         let base_size = self.size as f32;
         let mult = self.dynamic_size_multiplier.get();
-        let mut size = ((base_size * (scale as f32) * mult).round() as i32).max(1);
-        if size > MAX_CURSOR_PIXELS {
-            size = MAX_CURSOR_PIXELS;
+        let target_size = (base_size * (scale as f32) * mult).round() as i32;
+
+        // When fractional scale is significantly different from integer scale,
+        // we need to be more careful about size selection
+        let is_fractional = (fractional_scale - scale as f64).abs() > 0.01;
+
+        if is_fractional {
+            // For fractional scaling, calculate what the "real" size would be
+            let fractional_target = (base_size * (fractional_scale as f32) * mult).round() as i32;
+            let mut size = CURSOR_SIZES
+                .iter()
+                .min_by_key(|&&s| (s - fractional_target).abs())
+                .copied()
+                .unwrap_or(fractional_target);
+
+            if mult > 1.1 {
+                let base_fractional = (base_size * fractional_scale as f32).round() as i32;
+                let base_cursor_size = CURSOR_SIZES
+                    .iter()
+                    .min_by_key(|&&s| (s - base_fractional).abs())
+                    .copied()
+                    .unwrap_or(base_fractional);
+
+                let min_scaled_size = ((base_cursor_size as f32) * mult.min(1.5)).round() as i32;
+
+                for &cursor_size in CURSOR_SIZES {
+                    if cursor_size >= min_scaled_size && cursor_size > base_cursor_size {
+                        size = cursor_size;
+                        break;
+                    }
+                }
+
+                if size <= base_cursor_size {
+                    size = fractional_target.max(base_cursor_size + 8);
+                }
+            }
+
+            size.min(MAX_CURSOR_PIXELS).max(1)
+        } else {
+            // For integer scaling, use the original simple calculation
+            target_size.min(MAX_CURSOR_PIXELS).max(1)
         }
-        size
     }
 
     pub fn get_cursor_with_name(&self, icon: CursorIcon, scale: i32) -> Option<Rc<XCursor>> {
-        let pixel_size = self.effective_cursor_pixel_size(scale);
+        // For cache lookup, use the standard calculation
+        let base_size = self.size as f32;
+        let mult = self.dynamic_size_multiplier.get();
+        let pixel_size = ((base_size * (scale as f32) * mult).round() as i32)
+            .min(MAX_CURSOR_PIXELS)
+            .max(1);
         self.named_cursor_cache
             .borrow_mut()
             .entry((icon, pixel_size))
@@ -169,7 +221,6 @@ impl CursorManager {
 
     /// Get default cursor.
     pub fn get_default_cursor(&self, scale: i32) -> Rc<XCursor> {
-        // The default cursor always has a fallback.
         self.get_cursor_with_name(CursorIcon::Default, scale)
             .unwrap()
     }

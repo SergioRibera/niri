@@ -3711,9 +3711,10 @@ impl Niri {
 
         // Get the render cursor to draw.
         let cursor_scale = output_scale.integer_scale();
-        let render_cursor = self.cursor_manager.get_render_cursor(cursor_scale);
+        let fractional_scale = output_scale.fractional_scale();
+        let render_cursor = self.cursor_manager.get_render_cursor(cursor_scale, fractional_scale);
 
-        let output_scale = Scale::from(output.current_scale().fractional_scale());
+        let output_scale = Scale::from(fractional_scale);
 
         match render_cursor {
             RenderCursor::Hidden => (),
