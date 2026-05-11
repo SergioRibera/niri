@@ -118,6 +118,7 @@ use crate::animation::Clock;
 use crate::backend::tty::SurfaceDmabufFeedback;
 use crate::backend::{Backend, Headless, RenderResult, Tty, Winit};
 use crate::cursor::{CursorManager, CursorTextureCache, RenderCursor, XCursor};
+use crate::cursor_scale::{CursorScaleParams, CursorScaleTracker};
 #[cfg(feature = "dbus")]
 use crate::dbus::freedesktop_locale1::Locale1ToNiri;
 #[cfg(feature = "dbus")]
@@ -337,6 +338,7 @@ pub struct Niri {
     /// Most recent XKB settings from org.freedesktop.locale1.
     pub xkb_from_locale1: Option<Xkb>,
 
+    pub cursor_scale_tracker: CursorScaleTracker,
     pub cursor_manager: CursorManager,
     pub cursor_texture_cache: CursorTextureCache,
     pub cursor_shape_manager_state: CursorShapeManagerState,
@@ -1482,6 +1484,9 @@ impl State {
             self.niri
                 .cursor_manager
                 .reload(&config.cursor.xcursor_theme, config.cursor.xcursor_size);
+            self.niri.cursor_scale_tracker.reload(
+                CursorScaleParams::from_config(config.cursor.shake.clone(), &config.animations),
+            );
             self.niri.cursor_texture_cache.clear();
         }
 
@@ -2398,6 +2403,10 @@ impl Niri {
         seat.add_pointer();
 
         let cursor_shape_manager_state = CursorShapeManagerState::new::<State>(&display_handle);
+        let cursor_scale_tracker = CursorScaleTracker::new(
+            animation_clock.clone(),
+            CursorScaleParams::from_config(config_.cursor.shake.clone(), &config_.animations),
+        );
         let cursor_manager =
             CursorManager::new(&config_.cursor.xcursor_theme, config_.cursor.xcursor_size);
 
@@ -2572,6 +2581,7 @@ impl Niri {
             cursor_manager,
             cursor_texture_cache: Default::default(),
             cursor_shape_manager_state,
+            cursor_scale_tracker,
             dnd_icon: None,
             pointer_contents: PointContents::default(),
             pointer_visibility: PointerVisibility::Visible,
@@ -3701,9 +3711,10 @@ impl Niri {
 
         // Get the render cursor to draw.
         let cursor_scale = output_scale.integer_scale();
-        let render_cursor = self.cursor_manager.get_render_cursor(cursor_scale);
+        let fractional_scale = output_scale.fractional_scale();
+        let render_cursor = self.cursor_manager.get_render_cursor(cursor_scale, fractional_scale);
 
-        let output_scale = Scale::from(output.current_scale().fractional_scale());
+        let output_scale = Scale::from(fractional_scale);
 
         match render_cursor {
             RenderCursor::Hidden => (),
@@ -3725,13 +3736,16 @@ impl Niri {
                 icon,
                 scale,
                 cursor,
+                pixel_size,
             } => {
                 let (idx, frame) = cursor.frame(self.start_time.elapsed().as_millis() as u32);
                 let hotspot = XCursor::hotspot(frame).to_logical(scale);
                 let pointer_pos =
                     (pointer_pos - hotspot.to_f64()).to_physical_precise_round(output_scale);
 
-                let texture = self.cursor_texture_cache.get(icon, scale, &cursor, idx);
+                let texture = self
+                    .cursor_texture_cache
+                    .get(icon, pixel_size, scale, &cursor, idx);
                 match MemoryRenderBufferRenderElement::from_buffer(
                     renderer,
                     pointer_pos,
@@ -3933,15 +3947,15 @@ impl Niri {
 
                     // The default cursor is rendered at the right scale for each output, which
                     // means that it may have a different hotspot for each output.
-                    let output_scale = output.current_scale().integer_scale();
+                    let output_scale = output.current_scale();
                     let cursor = self
                         .cursor_manager
-                        .get_cursor_with_name(icon, output_scale)
-                        .unwrap_or_else(|| self.cursor_manager.get_default_cursor(output_scale));
+                        .get_cursor_with_name(icon, output_scale.integer_scale(), output_scale.fractional_scale())
+                        .unwrap_or_else(|| self.cursor_manager.get_default_cursor(output_scale.integer_scale(), output_scale.fractional_scale()));
 
                     // For simplicity, we always use frame 0 for this computation. Let's hope the
                     // hotspot doesn't change between frames.
-                    let hotspot = XCursor::hotspot(&cursor.frames()[0]).to_logical(output_scale);
+                    let hotspot = XCursor::hotspot(&cursor.frames()[0]).to_logical(output_scale.integer_scale());
 
                     let surface_pos = pointer_pos.to_i32_round() - hotspot;
                     let bbox = bbox_from_surface_tree(surface, surface_pos);
@@ -4057,6 +4071,21 @@ impl Niri {
         self.exit_confirm_dialog.advance_animations();
         self.screenshot_ui.advance_animations();
         self.window_mru_ui.advance_animations();
+
+        let cursor_changed = self
+            .cursor_scale_tracker
+            .advance_animations(&mut self.cursor_manager);
+
+        if cursor_changed {
+            // FIXME: can be more granular.
+            self.queue_redraw_all();
+        }
+
+        // Continue requesting redraws if cursor animations are pending
+        if self.cursor_scale_tracker.has_animations() {
+            // Schedule next frame by queuing a redraw
+            self.queue_redraw_all();
+        }
 
         for state in self.output_state.values_mut() {
             if let Some(transition) = &mut state.screen_transition {
