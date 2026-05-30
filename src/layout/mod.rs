@@ -2857,7 +2857,7 @@ impl<W: LayoutElement> Layout<W> {
 
             if self
                 .zoom_state_ref(&mon.output)
-                .is_some_and(OutputZoomState::transitioning)
+                .is_some_and(OutputZoomState::is_animating)
             {
                 return true;
             }
