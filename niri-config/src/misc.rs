@@ -50,6 +50,41 @@ impl Default for Zoom {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShakeConfig {
+    pub off: bool,
+    pub max_multiplier: f64,
+    pub post_expand_delay_ms: u64,
+    pub expand_duration_ms: u64,
+    pub decay_duration_ms: u64,
+    pub shake_interval_ms: u64,
+    pub min_diagonal: f64,
+    pub sensitivity: f64,
+    pub cooldown_ms: Option<u64>,
+    pub behavior: Option<String>,
+    pub stopped_threshold_ms: Option<u64>,
+    pub shake_relax_ms: Option<u64>,
+}
+
+impl Default for ShakeConfig {
+    fn default() -> Self {
+        Self {
+            off: true,
+            max_multiplier: 4.5,
+            post_expand_delay_ms: 250,
+            expand_duration_ms: 200,
+            decay_duration_ms: 300,
+            shake_interval_ms: 400,
+            min_diagonal: 100.0,
+            sensitivity: 2.0,
+            cooldown_ms: Some(400),
+            behavior: Some(String::from("hold")),
+            stopped_threshold_ms: Some(50),
+            shake_relax_ms: Some(150),
+        }
+    }
+}
+
 #[derive(knuffel::Decode, Debug, PartialEq)]
 pub struct ZoomPart {
     #[knuffel(child, unwrap(argument))]
@@ -77,6 +112,56 @@ impl MergeWith<ZoomPart> for Zoom {
     }
 }
 
+#[derive(knuffel::Decode, Debug, PartialEq)]
+pub struct ShakeConfigPart {
+    #[knuffel(child)]
+    pub off: bool,
+    #[knuffel(child)]
+    pub on: bool,
+    #[knuffel(child, unwrap(argument))]
+    pub max_multiplier: Option<f64>,
+    #[knuffel(child, unwrap(argument))]
+    pub post_expand_delay_ms: Option<u64>,
+    #[knuffel(child, unwrap(argument))]
+    pub expand_duration_ms: Option<u64>,
+    #[knuffel(child, unwrap(argument))]
+    pub decay_duration_ms: Option<u64>,
+    #[knuffel(child, unwrap(argument))]
+    pub shake_interval_ms: Option<u64>,
+    #[knuffel(child, unwrap(argument))]
+    pub min_diagonal: Option<f64>,
+    #[knuffel(child, unwrap(argument))]
+    pub sensitivity: Option<f64>,
+    #[knuffel(child, unwrap(argument))]
+    pub cooldown_ms: Option<u64>,
+    #[knuffel(child, unwrap(argument, str))]
+    pub behavior: Option<String>,
+    #[knuffel(child, unwrap(argument))]
+    pub stopped_threshold_ms: Option<u64>,
+    #[knuffel(child, unwrap(argument))]
+    pub shake_relax_ms: Option<u64>,
+}
+
+impl MergeWith<ShakeConfigPart> for ShakeConfig {
+    fn merge_with(&mut self, part: &ShakeConfigPart) {
+        self.off |= part.off;
+        if part.on {
+            self.off = false;
+        }
+        merge_clone!((self, part), sensitivity);
+        merge_clone!((self, part), max_multiplier);
+        merge_clone!((self, part), post_expand_delay_ms);
+        merge_clone!((self, part), expand_duration_ms);
+        merge_clone!((self, part), decay_duration_ms);
+        merge_clone!((self, part), shake_interval_ms);
+        merge_clone!((self, part), min_diagonal);
+        merge_clone_opt!((self, part), cooldown_ms);
+        merge_clone_opt!((self, part), behavior);
+        merge_clone_opt!((self, part), stopped_threshold_ms);
+        merge_clone_opt!((self, part), shake_relax_ms);
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Cursor {
     pub xcursor_theme: String,
@@ -84,6 +169,7 @@ pub struct Cursor {
     pub hide_when_typing: bool,
     pub hide_after_inactive_ms: Option<u32>,
     pub scale_with_zoom: bool,
+    pub shake: ShakeConfig,
 }
 
 impl Default for Cursor {
@@ -94,6 +180,7 @@ impl Default for Cursor {
             hide_when_typing: false,
             hide_after_inactive_ms: None,
             scale_with_zoom: false,
+            shake: Default::default(),
         }
     }
 }
@@ -110,6 +197,8 @@ pub struct CursorPart {
     pub hide_after_inactive_ms: Option<u32>,
     #[knuffel(child)]
     pub scale_with_zoom: Option<Flag>,
+    #[knuffel(child)]
+    pub shake: Option<ShakeConfigPart>,
 }
 
 impl MergeWith<CursorPart> for Cursor {
@@ -117,6 +206,7 @@ impl MergeWith<CursorPart> for Cursor {
         merge_clone!((self, part), xcursor_theme, xcursor_size);
         merge!((self, part), hide_when_typing, scale_with_zoom);
         merge_clone_opt!((self, part), hide_after_inactive_ms);
+        merge!((self, part), shake);
     }
 }
 

@@ -62,6 +62,16 @@ animations {
     recent-windows-close {
         spring damping-ratio=1.0 stiffness=800 epsilon=0.001
     }
+
+    cursor-expand {
+        duration-ms 200
+        curve "ease-out-cubic"
+    }
+
+    cursor-shrink {
+        duration-ms 300
+        curve "ease-out-cubic"
+    }
 }
 ```
 
@@ -470,6 +480,36 @@ animations {
     zoom-focal-pan {
         duration-ms 250
         curve "cubic-bezier" 0.05 0.7 0.1 1.0
+    }
+}
+```
+
+#### `cursor-expand`
+
+<sup>Since: 25.??</sup>
+
+Animation when the cursor grows due to shake detection.
+
+```kdl
+animations {
+    cursor-expand {
+        duration-ms 200
+        curve "ease-out-cubic"
+    }
+}
+```
+
+#### `cursor-shrink`
+
+<sup>Since: 25.??</sup>
+
+Animation when the cursor returns to normal size after shake.
+
+```kdl
+animations {
+    cursor-shrink {
+        duration-ms 300
+        curve "ease-out-cubic"
     }
 }
 ```
