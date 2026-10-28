@@ -208,7 +208,12 @@ impl CursorManager {
         chosen.min(MAX_CURSOR_PIXELS).max(1)
     }
 
-    pub fn get_cursor_with_name(&self, icon: CursorIcon, scale: i32, fractional_scale: f64) -> Option<Rc<XCursor>> {
+    pub fn get_cursor_with_name(
+        &self,
+        icon: CursorIcon,
+        scale: i32,
+        fractional_scale: f64,
+    ) -> Option<Rc<XCursor>> {
         // Use texture pixel size (includes magnification snap) for the cache key
         // so each discrete size we render gets its own entry.
         let pixel_size = self.texture_pixel_size(scale, fractional_scale);
