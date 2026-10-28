@@ -393,6 +393,9 @@ pub struct Niri {
     pub configured_keymap: Option<Arc<str>>,
 
     pub cursor_scale_tracker: CursorScaleTracker,
+    /// Timer waking the event loop at the cursor shake decay deadline, along with that deadline
+    /// in animation clock time.
+    pub cursor_scale_timer: Option<(RegistrationToken, Duration)>,
     pub cursor_manager: CursorManager,
     pub cursor_texture_cache: CursorTextureCache,
     pub cursor_shape_manager_state: CursorShapeManagerState,
@@ -2881,6 +2884,7 @@ impl Niri {
             cursor_texture_cache: Default::default(),
             cursor_shape_manager_state,
             cursor_scale_tracker,
+            cursor_scale_timer: None,
             dnd_icon: None,
             pointer_contents: PointContents::default(),
             pointer_visibility: PointerVisibility::Visible,
@@ -4450,11 +4454,10 @@ impl Niri {
             self.queue_redraw_all();
         }
 
-        // Continue requesting redraws if cursor animations are pending
         if self.cursor_scale_tracker.has_animations() {
-            // Schedule next frame by queuing a redraw
             self.queue_redraw_all();
         }
+        self.arm_cursor_scale_timer();
 
         for state in self.output_state.values_mut() {
             if let Some(transition) = &mut state.screen_transition {
@@ -7261,6 +7264,42 @@ impl Niri {
             // FIXME: granular.
             self.queue_redraw_all();
         }
+    }
+
+    /// Makes sure the event loop wakes up at the cursor shake decay deadline.
+    ///
+    /// While the cursor sits expanded there is nothing to redraw, so with an idle pointer nothing
+    /// else would call `advance_animations()` to start the shrink.
+    fn arm_cursor_scale_timer(&mut self) {
+        let Some(deadline) = self.cursor_scale_tracker.next_wakeup() else {
+            return;
+        };
+
+        // Pointer motion only pushes the deadline later, so an already armed earlier timer is
+        // fine: when it fires early, advance_animations() re-arms for the new deadline.
+        if let Some((token, armed)) = self.cursor_scale_timer {
+            if armed <= deadline {
+                return;
+            }
+            self.event_loop.remove(token);
+            self.cursor_scale_timer = None;
+        }
+
+        let rate = self.clock.rate();
+        if rate <= 0. {
+            return;
+        }
+        let remaining = deadline.saturating_sub(self.clock.now());
+        let timer = Timer::from_duration(remaining.div_f64(rate));
+        let token = self
+            .event_loop
+            .insert_source(timer, |_, _, state| {
+                // Waking up is enough: the loop then runs advance_animations().
+                state.niri.cursor_scale_timer = None;
+                TimeoutAction::Drop
+            })
+            .unwrap();
+        self.cursor_scale_timer = Some((token, deadline));
     }
 
     pub fn reset_pointer_inactivity_timer(&mut self) {
