@@ -4011,6 +4011,44 @@ impl Niri {
         }
     }
 
+    /// Uploads the textures of every size a cursor expansion goes through.
+    ///
+    /// Without this, each size gets imported on the frame that first needs it, stuttering the
+    /// animation. Already imported textures are only looked up, so calling this on every frame of
+    /// the expansion is cheap; the actual uploads happen on its first frame, still near 1x size.
+    fn preload_magnified_cursor_textures<R: NiriRenderer>(
+        &self,
+        renderer: &mut R,
+        icon: CursorIcon,
+        scale: i32,
+        fractional_scale: f64,
+        max_mult: f64,
+    ) {
+        let _span = tracy_client::span!("Niri::preload_magnified_cursor_textures");
+
+        let cursors =
+            self.cursor_manager
+                .magnified_cursors(icon, scale, fractional_scale, max_mult);
+        for (pixel_size, cursor) in cursors {
+            for idx in 0..cursor.frames().len() {
+                let texture = self
+                    .cursor_texture_cache
+                    .get(icon, pixel_size, scale, &cursor, idx);
+                if let Err(err) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    Point::<f64, Physical>::from((0., 0.)),
+                    &texture,
+                    None,
+                    None,
+                    None,
+                    Kind::Cursor,
+                ) {
+                    warn!("error preloading a cursor texture: {err:?}");
+                }
+            }
+        }
+    }
+
     pub fn render_pointer<R: NiriRenderer>(
         &self,
         renderer: &mut R,
@@ -4077,6 +4115,16 @@ impl Niri {
                 pixel_size,
                 rescale,
             } => {
+                if let Some(max_mult) = self.cursor_scale_tracker.expansion_target() {
+                    self.preload_magnified_cursor_textures(
+                        renderer,
+                        icon,
+                        scale,
+                        fractional_scale,
+                        max_mult,
+                    );
+                }
+
                 let (idx, frame) = cursor.frame(self.start_time.elapsed().as_millis() as u32);
                 let hotspot = XCursor::hotspot(frame).to_logical(scale);
                 let element_pos =

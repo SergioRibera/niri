@@ -172,18 +172,52 @@ impl CursorManager {
         let desired = f64::from(base_size) * f64::from(self.dynamic_size_multiplier.get());
         let pixel_size = images.covering_size(desired);
 
-        let cursor = self
-            .named_cursor_cache
-            .borrow_mut()
-            .entry((icon, pixel_size))
-            .or_insert_with(|| Rc::new(images.cursor_with_size(pixel_size)))
-            .clone();
-
         Some(NamedCursor {
-            cursor,
+            cursor: self.cursor_with_size(icon, &images, pixel_size),
             pixel_size,
             rescale: desired / f64::from(pixel_size),
         })
+    }
+
+    /// Every cursor `resolve_named()` can pick for `icon` while the multiplier grows up to
+    /// `max_mult`, along with its nominal image size.
+    ///
+    /// Used to prepare the textures before a magnification animation needs them.
+    pub fn magnified_cursors(
+        &self,
+        icon: CursorIcon,
+        scale: i32,
+        fractional_scale: f64,
+        max_mult: f64,
+    ) -> Vec<(u32, Rc<XCursor>)> {
+        let Some(images) = self.icon_images(icon) else {
+            return Vec::new();
+        };
+
+        let base_size = images.nearest_size(self.base_pixel_size(scale, fractional_scale));
+        let top_size = images.covering_size(f64::from(base_size) * max_mult.max(1.));
+
+        let mut sizes: Vec<u32> = images
+            .0
+            .iter()
+            .map(|image| image.size)
+            .filter(|size| (base_size..=top_size).contains(size))
+            .collect();
+        sizes.sort_unstable();
+        sizes.dedup();
+
+        sizes
+            .into_iter()
+            .map(|size| (size, self.cursor_with_size(icon, &images, size)))
+            .collect()
+    }
+
+    fn cursor_with_size(&self, icon: CursorIcon, images: &IconImages, size: u32) -> Rc<XCursor> {
+        self.named_cursor_cache
+            .borrow_mut()
+            .entry((icon, size))
+            .or_insert_with(|| Rc::new(images.cursor_with_size(size)))
+            .clone()
     }
 
     fn icon_images(&self, icon: CursorIcon) -> Option<Rc<IconImages>> {

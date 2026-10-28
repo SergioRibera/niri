@@ -291,6 +291,17 @@ impl CursorScaleTracker {
         )
     }
 
+    /// Multiplier the cursor is growing towards, while an expansion is running.
+    ///
+    /// The renderer uses it to prepare every texture size the animation will go through.
+    #[must_use]
+    pub fn expansion_target(&self) -> Option<f64> {
+        match self.state {
+            ScaleState::Expanding(_) => Some(self.params.max_mult),
+            ScaleState::Idle | ScaleState::Expanded { .. } | ScaleState::Shrinking(_) => None,
+        }
+    }
+
     /// Clock time at which `advance_animations()` must run again even without any input.
     #[must_use]
     pub fn next_wakeup(&self) -> Option<Duration> {
