@@ -4991,6 +4991,11 @@ impl Niri {
         // Freeze the clock at the target time.
         self.clock.set_unadjusted(target_presentation_time);
 
+        // Sample the cursor magnification at the target time too, like the layout animations,
+        // so that its steps follow the frame timing rather than whenever the event loop woke up.
+        self.cursor_scale_tracker
+            .advance_animations(&mut self.cursor_manager);
+
         self.update_render_elements(Some(output));
 
         let mut res = RenderResult::Skipped;
@@ -5008,6 +5013,7 @@ impl Niri {
             state.unfinished_animations_remain |= self
                 .cursor_manager
                 .is_current_cursor_animated(output.current_scale().integer_scale());
+            state.unfinished_animations_remain |= self.cursor_scale_tracker.has_animations();
 
             // Also check layer surfaces.
             if !state.unfinished_animations_remain {
