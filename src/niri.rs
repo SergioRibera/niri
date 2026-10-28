@@ -1753,9 +1753,12 @@ impl State {
             self.niri
                 .cursor_manager
                 .reload(&config.cursor.xcursor_theme, config.cursor.xcursor_size);
-            self.niri.cursor_scale_tracker.reload(
-                CursorScaleParams::from_config(config.cursor.shake.clone(), &config.animations),
-            );
+            self.niri
+                .cursor_scale_tracker
+                .reload(CursorScaleParams::from_config(
+                    config.cursor.shake.clone(),
+                    &config.animations,
+                ));
             self.niri.cursor_texture_cache.clear();
         }
 
@@ -4023,7 +4026,9 @@ impl Niri {
         // Get the render cursor to draw.
         let cursor_scale = output_scale.integer_scale();
         let fractional_scale = output_scale.fractional_scale();
-        let render_cursor = self.cursor_manager.get_render_cursor(cursor_scale, fractional_scale);
+        let render_cursor = self
+            .cursor_manager
+            .get_render_cursor(cursor_scale, fractional_scale);
 
         let output_scale = Scale::from(fractional_scale);
 
@@ -4304,12 +4309,22 @@ impl Niri {
                     let output_scale = output.current_scale();
                     let cursor = self
                         .cursor_manager
-                        .get_cursor_with_name(icon, output_scale.integer_scale(), output_scale.fractional_scale())
-                        .unwrap_or_else(|| self.cursor_manager.get_default_cursor(output_scale.integer_scale(), output_scale.fractional_scale()));
+                        .get_cursor_with_name(
+                            icon,
+                            output_scale.integer_scale(),
+                            output_scale.fractional_scale(),
+                        )
+                        .unwrap_or_else(|| {
+                            self.cursor_manager.get_default_cursor(
+                                output_scale.integer_scale(),
+                                output_scale.fractional_scale(),
+                            )
+                        });
 
                     // For simplicity, we always use frame 0 for this computation. Let's hope the
                     // hotspot doesn't change between frames.
-                    let hotspot = XCursor::hotspot(&cursor.frames()[0]).to_logical(output_scale.integer_scale());
+                    let hotspot = XCursor::hotspot(&cursor.frames()[0])
+                        .to_logical(output_scale.integer_scale());
 
                     let surface_pos = pointer_pos.to_i32_round() - hotspot;
                     let bbox = bbox_from_surface_tree(surface, surface_pos);
@@ -6036,7 +6051,10 @@ impl Niri {
         let output_scale = Scale::from(output.current_scale().fractional_scale());
 
         let mut elements = Vec::new();
-        match self.cursor_manager.get_render_cursor(int_scale) {
+        match self
+            .cursor_manager
+            .get_render_cursor(int_scale, output_scale.x)
+        {
             RenderCursor::Hidden => (),
             RenderCursor::Surface { surface, .. } => {
                 // Subsurfaces can extend above or to the left of the root surface, so shift the
@@ -6060,9 +6078,13 @@ impl Niri {
                 icon,
                 scale,
                 cursor,
+                pixel_size,
+                ..
             } => {
                 let (idx, _frame) = cursor.frame(self.start_time.elapsed().as_millis() as u32);
-                let texture = self.cursor_texture_cache.get(icon, scale, &cursor, idx);
+                let texture = self
+                    .cursor_texture_cache
+                    .get(icon, pixel_size, scale, &cursor, idx);
                 match MemoryRenderBufferRenderElement::from_buffer(
                     renderer,
                     Point::<f64, _>::from((0., 0.)),
