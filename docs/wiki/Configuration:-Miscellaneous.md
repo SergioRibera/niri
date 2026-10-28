@@ -230,8 +230,10 @@ cursor {
 Maximum cursor size multiplier when shake is detected.
 
 ```kdl
-shake {
-    max-multiplier 2.5
+cursor {
+    shake {
+        max-multiplier 2.5
+    }
 }
 ```
 
@@ -242,8 +244,10 @@ How the enlarged cursor behaves:
   - `"intensity"`: stays enlarged while shaking continues, shrinks when intensity drops.
 
 ```kdl
-shake {
-    behavior "hold"
+cursor {
+    shake {
+        behavior "hold"
+    }
 }
 ```
 
@@ -252,8 +256,10 @@ shake {
 Time to wait after shrinking before detecting shakes again.
 
 ```kdl
-shake {
-    cooldown-ms 400
+cursor {
+    shake {
+        cooldown-ms 400
+    }
 }
 ```
 
@@ -262,8 +268,10 @@ shake {
 For `behavior "hold"`: time without motion to consider pointer stopped.
 
 ```kdl
-shake {
-    stopped-threshold-ms 50
+cursor {
+    shake {
+        stopped-threshold-ms 50
+    }
 }
 ```
 
@@ -272,8 +280,10 @@ shake {
 For `behavior "intensity"`: time below sensitivity threshold before shrinking.
 
 ```kdl
-shake {
-    shake-relax-ms 150
+cursor {
+    shake {
+        shake-relax-ms 150
+    }
 }
 ```
 
@@ -282,8 +292,10 @@ shake {
 Delay after expansion completes before starting shrink.
 
 ```kdl
-shake {
-    post-expand-delay-ms 250
+cursor {
+    shake {
+        post-expand-delay-ms 250
+    }
 }
 ```
 
@@ -294,8 +306,10 @@ shake {
 Time window for tracking pointer motion history.
 
 ```kdl
-shake {
-    shake-interval-ms 400
+cursor {
+    shake {
+        shake-interval-ms 400
+    }
 }
 ```
 
@@ -304,8 +318,10 @@ shake {
 Minimum movement area (in pixels) required to detect shake.
 
 ```kdl
-shake {
-    min-diagonal 100.0
+cursor {
+    shake {
+        min-diagonal 100.0
+    }
 }
 ```
 
@@ -314,8 +330,10 @@ shake {
 Shake detection threshold. Higher values require more vigorous shaking.
 
 ```kdl
-shake {
-    sensitivity 2.0
+cursor {
+    shake {
+        sensitivity 2.0
+    }
 }
 ```
 
